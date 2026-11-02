@@ -1,0 +1,28 @@
+[package]
+name = "brownnoise"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Endless, gapless white, pink and brown noise generated live in your terminal"
+authors = ["Asanali Bulatov"]
+license = "MIT"
+repository = "https://github.com/krax1337/brownnoise"
+homepage = "https://github.com/krax1337/brownnoise"
+readme = "README.md"
+keywords = ["noise", "brown-noise", "focus", "sleep", "cli"]
+categories = ["command-line-utilities", "multimedia::audio"]
+exclude = [".github/", "packaging/"]
+
+[dependencies]
+clap = { version = "4.6.7", features = ["derive"] }
+cpal = "0.18.2"
+crossterm = "0.29.0"
+ctrlc = { version = "3.5.2", features = ["termination"] }
+dirs = "7.0.0"
+serde = { version = "1.0.229", features = ["derive"] }
+toml = "1.1.8"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
