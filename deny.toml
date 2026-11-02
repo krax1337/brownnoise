@@ -1,0 +1,49 @@
+# cargo-deny configuration: https://embarkstudios.github.io/cargo-deny/
+# Run locally with `cargo deny check`.
+
+[graph]
+# Only evaluate dependencies that end up in the binaries we ship.
+targets = [
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-pc-windows-msvc",
+]
+all-features = true
+
+[advisories]
+# Fail on every RustSec advisory (vulnerability, unmaintained, unsound) and on
+# yanked crates. Add an `ignore` entry with a reason only after triage.
+unmaintained = "all"
+yanked = "deny"
+ignore = []
+
+[licenses]
+# Every license must be listed here; anything else fails the check.
+allow = [
+    "Apache-2.0",
+    "MIT",
+    "Unicode-3.0",
+]
+confidence-threshold = 0.93
+exceptions = [
+    # Weak copyleft, file-level; used unmodified by dirs-sys. Allowed for this
+    # crate only so no other MPL-2.0 dependency slips in unreviewed.
+    { allow = ["MPL-2.0"], crate = "option-ext" },
+]
+
+[licenses.private]
+ignore = false
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = false
+highlight = "all"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

@@ -153,16 +153,22 @@ fn status_line(s: &Status, width: usize) -> String {
         let secs = left.as_secs();
         tail += &format!("  ⏱ {}:{:02}:{:02}", secs / 3600, secs / 60 % 60, secs % 60);
     }
+    // Pick the layout as if the tail were its longest form ("quitting…" or the
+    // timer), so the bars don't jump to a narrower layout when the state changes.
+    let reserved = TAIL_MAX.saturating_sub(tail.chars().count());
     let layouts = [(20, true), (20, false), (10, false)];
     let mut line = String::new();
     for (cells, labels) in layouts {
         line = layout(s, cells, labels, &tail);
-        if line.chars().count() + 6 <= width {
+        if line.chars().count() + reserved + 6 <= width {
             return line;
         }
     }
     truncate(&line, width.saturating_sub(5))
 }
+
+/// Longest tail: "▶ playing  ⏱ 10:00:00" / "⏹ quitting, fading out 10.0s".
+const TAIL_MAX: usize = 29;
 
 fn layout(s: &Status, cells: usize, labels: bool, tail: &str) -> String {
     let filled = (s.volume as usize * cells + 50) / 100;

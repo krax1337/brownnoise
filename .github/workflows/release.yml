@@ -2,33 +2,81 @@ name: Release
 
 on:
   push:
-    tags: ["v*"]
+    tags:
+      - "v*.*.*"
 
-permissions:
-  contents: read
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
 
 env:
   CARGO_TERM_COLOR: always
 
+# No dependency caching anywhere in this workflow: release artifacts must not be
+# built from a cache that a less-privileged workflow could have poisoned.
+
 jobs:
   verify:
-    name: Verify tag matches Cargo.toml
+    name: Verify tag, Cargo.toml and CHANGELOG
+    if: github.repository == 'krax1337/brownnoise'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
     steps:
-      - uses: actions/checkout@v4
-      - name: Compare versions
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check tag against Cargo.toml and CHANGELOG.md
+        id: version
+        env:
+          TAG: ${{ github.ref_name }}
         run: |
-          crate_version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
-          tag_version="${GITHUB_REF_NAME#v}"
-          if [ "$crate_version" != "$tag_version" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME does not match Cargo.toml version $crate_version"
+          semver='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?$'
+          if [[ ! "$TAG" =~ $semver ]]; then
+            echo "::error::Tag '$TAG' is not a semantic version (vX.Y.Z or vX.Y.Z-pre)."
             exit 1
           fi
+          version="${TAG#v}"
+          crate_version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)"
+          failed=0
+          if [[ "$crate_version" != "$version" ]]; then
+            echo "::error file=Cargo.toml::version is '$crate_version', expected '$version'."
+            failed=1
+          fi
+          if ! grep -qF "## [$version]" CHANGELOG.md; then
+            echo "::error file=CHANGELOG.md::No '## [$version]' section."
+            failed=1
+          fi
+          if [[ "$failed" -ne 0 ]]; then
+            exit 1
+          fi
+          if [[ "$version" == *-* ]]; then
+            prerelease=true
+          else
+            prerelease=false
+          fi
+          {
+            echo "version=$version"
+            echo "prerelease=$prerelease"
+          } >> "$GITHUB_OUTPUT"
 
   build:
     name: Build ${{ matrix.target }}
     needs: verify
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -43,22 +91,21 @@ jobs:
             os: ubuntu-22.04-arm
           - target: x86_64-pc-windows-msvc
             os: windows-latest
-    defaults:
-      run:
-        shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Install ALSA development files
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev pkg-config
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
+          toolchain: stable
           targets: ${{ matrix.target }}
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: ${{ matrix.target }}
       - name: Build
-        run: cargo build --release --locked --target "${{ matrix.target }}"
+        env:
+          TARGET: ${{ matrix.target }}
+        run: cargo build --release --locked --target "$TARGET"
       - name: Package
         env:
           TARGET: ${{ matrix.target }}
@@ -67,7 +114,7 @@ jobs:
           staging="$RUNNER_TEMP/$name"
           mkdir -p "$staging" dist
           cp README.md LICENSE "$staging/"
-          if [ "$RUNNER_OS" = "Windows" ]; then
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
             cp "target/$TARGET/release/brownnoise.exe" "$staging/"
             (cd "$staging" && 7z a -tzip "$GITHUB_WORKSPACE/dist/$name.zip" brownnoise.exe README.md LICENSE)
           else
@@ -75,7 +122,7 @@ jobs:
             tar -czf "dist/$name.tar.gz" -C "$staging" brownnoise README.md LICENSE
           fi
           ls -l dist
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dist-${{ matrix.target }}
           path: dist/*
@@ -83,14 +130,51 @@ jobs:
 
   release:
     name: Publish GitHub Release
-    needs: build
+    needs:
+      - verify
+      - build
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
-      contents: write
-    outputs:
-      publish_tap: ${{ steps.tap.outputs.publish }}
+      contents: write # create the GitHub release and upload its assets
+      id-token: write # keyless signing of SHA256SUMS and the provenance attestation
+      attestations: write # store the build provenance attestation
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Extract release notes from CHANGELOG.md
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          awk -v v="$VERSION" 'index($0, "## [" v "]") == 1 {f=1; next} f && /^## \[/ {exit} f && /^\[[^]]+\]: / {exit} f' \
+            CHANGELOG.md > "$RUNNER_TEMP/release-notes.md"
+          if ! grep -q '[^[:space:]]' "$RUNNER_TEMP/release-notes.md"; then
+            echo "::error file=CHANGELOG.md::The '## [$VERSION]' section is empty."
+            exit 1
+          fi
+          cat "$RUNNER_TEMP/release-notes.md"
+      - uses: anchore/sbom-action/download-syft@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+        id: syft
+      # Scan the source tree before the archives are downloaded so the SBOM
+      # describes the crate dependencies resolved in Cargo.lock.
+      - name: Generate SPDX SBOM
+        env:
+          SYFT: ${{ steps.syft.outputs.cmd }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          sbom="$RUNNER_TEMP/brownnoise-${TAG}.spdx.json"
+          "$SYFT" scan "dir:$GITHUB_WORKSPACE" \
+            --select-catalogers rust \
+            --source-name brownnoise \
+            --source-version "$VERSION" \
+            --output "spdx-json=$sbom"
+          if ! jq -e '[.packages[] | select(.name == "cpal")] | length == 1' "$sbom" > /dev/null; then
+            echo "::error::The SBOM does not list the crate dependencies from Cargo.lock."
+            exit 1
+          fi
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: dist-*
           path: dist
@@ -100,58 +184,102 @@ jobs:
         run: |
           sha256sum -- *.tar.gz *.zip > SHA256SUMS
           cat SHA256SUMS
-      - uses: softprops/action-gh-release@v2
+      - name: Attest build provenance
+        id: attest
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          files: dist/*
-          generate_release_notes: true
-          prerelease: ${{ contains(github.ref_name, '-') }}
-          fail_on_unmatched_files: true
-      - uses: actions/upload-artifact@v4
+          subject-checksums: dist/SHA256SUMS
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.3
+      # Attach a keyless signature of SHA256SUMS, the SLSA provenance bundle and
+      # the SBOM so every archive can be verified from the release page alone.
+      - name: Sign SHA256SUMS and collect provenance and SBOM
+        env:
+          TAG: ${{ github.ref_name }}
+          BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+        run: |
+          cosign sign-blob --yes --bundle dist/SHA256SUMS.sigstore.json dist/SHA256SUMS
+          cp "$BUNDLE" "dist/brownnoise-${TAG}.intoto.jsonl"
+          cp "$RUNNER_TEMP/brownnoise-${TAG}.spdx.json" dist/
+          ls -l dist
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          PRERELEASE: ${{ needs.verify.outputs.prerelease }}
+        run: |
+          flags=()
+          if [[ "$PRERELEASE" == "true" ]]; then
+            flags+=(--prerelease)
+          fi
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "$TAG" --notes-file "$RUNNER_TEMP/release-notes.md" "${flags[@]}" \
+            dist/*
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: sha256sums
           path: dist/SHA256SUMS
           if-no-files-found: error
-      - name: Decide whether to update the Homebrew tap
+
+  homebrew:
+    name: Update Homebrew tap
+    needs:
+      - verify
+      - release
+    if: needs.verify.outputs.prerelease != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # HOMEBREW_TAP_TOKEN is only read inside this environment; restrict the
+    # environment to `v*` tags in the repository settings.
+    environment: homebrew-tap
+    permissions:
+      contents: read
+    steps:
+      - name: Check for HOMEBREW_TAP_TOKEN
         id: tap
         env:
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          PRERELEASE: ${{ contains(github.ref_name, '-') }}
         run: |
-          if [ -z "$HOMEBREW_TAP_TOKEN" ]; then
+          if [[ -z "$HOMEBREW_TAP_TOKEN" ]]; then
             echo "::notice::HOMEBREW_TAP_TOKEN is not set; skipping the Homebrew tap update."
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-          elif [ "$PRERELEASE" = "true" ]; then
-            echo "::notice::Pre-release tag; skipping the Homebrew tap update."
             echo "publish=false" >> "$GITHUB_OUTPUT"
           else
             echo "publish=true" >> "$GITHUB_OUTPUT"
           fi
-
-  homebrew:
-    name: Update Homebrew tap
-    needs: release
-    if: needs.release.outputs.publish_tap == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.tap.outputs.publish == 'true'
         with:
           path: src
-      - uses: actions/download-artifact@v4
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: steps.tap.outputs.publish == 'true'
         with:
           name: sha256sums
           path: sums
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.tap.outputs.publish == 'true'
         with:
           repository: krax1337/homebrew-tap
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           path: tap
+          persist-credentials: false
       - name: Render formula
+        if: steps.tap.outputs.publish == 'true'
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
         run: |
           mkdir -p tap/Formula
-          sh src/packaging/homebrew/render.sh "${GITHUB_REF_NAME#v}" sums/SHA256SUMS > tap/Formula/brownnoise.rb
+          sh src/packaging/homebrew/render.sh "$VERSION" sums/SHA256SUMS > tap/Formula/brownnoise.rb
           cat tap/Formula/brownnoise.rb
+      # The tap token is used only for this push and is never written to
+      # .git/config, so later steps and uploaded files cannot read it.
       - name: Commit and push
+        if: steps.tap.outputs.publish == 'true'
         working-directory: tap
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          VERSION: ${{ needs.verify.outputs.version }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -160,5 +288,8 @@ jobs:
             echo "Formula already up to date."
             exit 0
           fi
-          git commit -m "brownnoise ${GITHUB_REF_NAME#v}"
-          git push
+          git commit -m "brownnoise ${VERSION}"
+          auth="$(printf 'x-access-token:%s' "$HOMEBREW_TAP_TOKEN" | base64 -w0)"
+          echo "::add-mask::${auth}"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${auth}" push origin HEAD
+

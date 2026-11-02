@@ -1,24 +1,46 @@
-# brownnoise
+<div align="center">
 
-Endless, gapless white, pink and brown noise in your terminal.
+# 🟤 brownnoise
+
+**Endless, gapless brown noise in your terminal. No loops, no pauses, no browser tab.**
+
+Noise is generated live, sample by sample, so there is no audio file to loop
+and nothing to buffer. You just get steady sound for focus or sleep, for as long as you want.
 
 [![CI](https://github.com/krax1337/brownnoise/actions/workflows/ci.yml/badge.svg)](https://github.com/krax1337/brownnoise/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/krax1337/brownnoise)](https://github.com/krax1337/brownnoise/releases)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/krax1337/brownnoise/badge)](https://scorecard.dev/viewer/?uri=github.com/krax1337/brownnoise)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-## Why
+[Install](#-install) · [Usage](#-usage) · [Colors & tone](#-colors--tone) · [Security](#-security)
 
-Most noise apps and videos play a recorded clip on repeat. You can hear the
-seam every time it loops, and once you notice it you keep noticing it.
+<img src="docs/demo.gif" alt="brownnoise playing in a terminal: volume, tone, color changes, pause and a fade-out on quit" width="900">
 
-`brownnoise` has no clip and no loop point. It generates the noise sample by
-sample on the audio thread for as long as it runs, so the sound never repeats
-and never pauses. The left and right channels are independent, which gives a
-wide stereo image instead of a sound in the middle of your head. If you plug in
-headphones or connect AirPods, playback follows the new output device on its
-own.
+</div>
 
-## Install
+## ✨ Highlights
+
+- 🔁 **Truly gapless.** No recording, no loop point, no buffering hiccups, so you never hear a seam.
+- 🎛️ **Live controls.** Change volume, tone and color while it plays; color changes crossfade smoothly.
+- 🎚️ **White, pink and brown,** with a tone knob that makes any of them deeper or brighter at the same loudness.
+- 😴 **Sleep timer.** `-t 45m` stops on its own with a gentle 10-second fade-out.
+- 🧠 **Remembers you.** It starts next time with the color, volume and tone you quit with.
+- 🎧 **Follows your audio.** Plug in headphones or connect AirPods and playback moves with you.
+- 🪶 **Tiny.** One ~1 MB binary, no runtime. On Apple Silicon it uses ~17 MB of RAM and well under 1% CPU.
+- 🔐 **Verifiable releases.** Signed checksums, SLSA build provenance and an SBOM on every release.
+
+## 🆚 Why not a video or a website?
+
+| | YouTube / streaming | Web players | `sox` one-liner | **brownnoise** |
+| --- | :---: | :---: | :---: | :---: |
+| No loop seams or buffering pauses | ❌ | ❌ | ✅ | ✅ |
+| Works offline, no browser tab | ❌ | ❌ | ✅ | ✅ |
+| Change color / tone while playing | ❌ | some | ❌ | ✅ |
+| Sleep timer with fade-out | ❌ | some | manual | ✅ |
+| Remembers your settings | ❌ | some | ❌ | ✅ |
+| No ads, no account, no tracking | ❌ | varies | ✅ | ✅ |
+
+## 📦 Install
 
 ### Homebrew (macOS, Linux)
 
@@ -30,7 +52,7 @@ brew install krax1337/tap/brownnoise
 
 Download the archive for your platform from the
 [latest release](https://github.com/krax1337/brownnoise/releases/latest),
-extract it and put `brownnoise` somewhere on your `PATH`.
+extract it and put `brownnoise` on your `PATH`.
 
 | Platform              | Archive                                              |
 | --------------------- | ---------------------------------------------------- |
@@ -40,42 +62,19 @@ extract it and put `brownnoise` somewhere on your `PATH`.
 | Linux (aarch64)       | `brownnoise-vX.Y.Z-aarch64-unknown-linux-gnu.tar.gz` |
 | Windows (x86_64)      | `brownnoise-vX.Y.Z-x86_64-pc-windows-msvc.zip`       |
 
-Checksums are in `SHA256SUMS` next to the archives:
-
-```sh
-sha256sum --check --ignore-missing SHA256SUMS
-```
-
-On Linux the binary needs the ALSA runtime library (`libasound2` on
-Debian/Ubuntu, `alsa-lib` on Fedora and Arch), which most desktop systems
-already have.
+On Linux the binary needs the ALSA runtime (`libasound2` on Debian/Ubuntu,
+`alsa-lib` on Fedora and Arch), which desktop systems already have.
 
 ### Cargo
-
-Until the first crates.io release, install from Git (Rust 1.85 or newer):
 
 ```sh
 cargo install --locked --git https://github.com/krax1337/brownnoise
 ```
 
-### Build from source
+Requires Rust 1.85+. On Linux, install `libasound2-dev` and `pkg-config` first
+(Fedora: `alsa-lib-devel pkgconf`, Arch: `alsa-lib pkgconf`).
 
-```sh
-git clone https://github.com/krax1337/brownnoise
-cd brownnoise
-cargo build --release
-./target/release/brownnoise
-```
-
-On Linux, install the ALSA headers and `pkg-config` first:
-
-```sh
-sudo apt install libasound2-dev pkg-config   # Debian, Ubuntu
-sudo dnf install alsa-lib-devel pkgconf      # Fedora
-sudo pacman -S alsa-lib pkgconf              # Arch
-```
-
-## Usage
+## 🚀 Usage
 
 ```sh
 brownnoise                      # last used settings (brown, 50% on first run)
@@ -87,55 +86,69 @@ brownnoise -c brown -t 1h30m    # fall asleep to brown noise
 
 ### Options
 
-| Option                  | Description                                                                 | Default                    |
-| ----------------------- | --------------------------------------------------------------------------- | -------------------------- |
-| `-c, --color <COLOR>`   | `white`, `pink` or `brown`                                                  | last used, else `brown`    |
-| `-v, --volume <0-100>`  | Starting volume                                                             | last used, else `50`       |
-| `--tone <0-100>`        | `0` is deepest, `50` neutral, `100` brightest                               | last used, else `50`       |
-| `-t, --timer <DUR>`     | Stop after `DUR`, fading out over the last 10 s: `45m`, `1h30m`, `90s`, `20` (bare number = minutes) | none (play until you quit) |
-| `-h, --help`            | Print help                                                                  |                            |
-| `-V, --version`         | Print version                                                               |                            |
+| Option                 | Description                                                         | Default                 |
+| ---------------------- | ------------------------------------------------------------------- | ----------------------- |
+| `-c, --color <COLOR>`  | `white`, `pink` or `brown`                                          | last used, else `brown` |
+| `-v, --volume <0-100>` | Starting volume                                                     | last used, else `50`    |
+| `--tone <0-100>`       | `0` deepest, `50` neutral, `100` brightest                          | last used, else `50`    |
+| `-t, --timer <DUR>`    | Stop after `DUR` with a 10 s fade: `45m`, `1h30m`, `90s`, `20` (min) | play until you quit     |
+| `-h, --help`           | Print help                                                          |                         |
+| `-V, --version`        | Print version                                                       |                         |
 
 ### Keys
 
-| Key                       | Action                             |
-| ------------------------- | ---------------------------------- |
-| `↑` / `↓`, `+` / `-` or `k` / `j` | Volume up / down           |
-| `←` / `→` or `h` / `l`    | Tone deeper / brighter             |
-| `r`                       | Reset tone to neutral (50)         |
-| `w` / `p` / `b`           | White / pink / brown noise         |
-| `c` or `Tab`              | Cycle color                        |
-| `space`                   | Pause / resume                     |
-| `q`, `Esc` or `Ctrl+C`    | Quit (with a short fade-out)       |
+| Key                                | Action                       |
+| ---------------------------------- | ---------------------------- |
+| `↑` / `↓`, `+` / `-` or `k` / `j`  | Volume up / down             |
+| `←` / `→` or `h` / `l`             | Tone deeper / brighter       |
+| `r`                                | Reset tone to neutral (50)   |
+| `w` / `p` / `b`                    | White / pink / brown noise   |
+| `c` or `Tab`                       | Cycle color                  |
+| `space`                            | Pause / resume               |
+| `q`, `Esc` or `Ctrl+C`             | Quit with a short fade-out   |
 
-When `brownnoise` is not attached to a terminal (for example
-`brownnoise -t 1h &`), it plays without the UI until it receives `SIGINT` or
-`SIGTERM`, or the timer ends.
+Run it in the background (`brownnoise -t 1h &`) and it plays without the UI
+until the timer ends or it receives `SIGINT` / `SIGTERM`.
 
-### Colors
+## 🎨 Colors & tone
 
-- **White** has equal energy at every frequency: a bright, hissy sound like
-  TV static.
-- **Pink** loses energy as frequency rises (−3 dB per octave): balanced and
-  soft, like steady rain.
-- **Brown** drops off faster (−6 dB per octave): a deep, low rumble like a
-  waterfall or distant surf.
+- **White**: equal energy at every frequency. Bright and hissy, like TV static.
+- **Pink**: −3 dB per octave. Balanced and soft, like steady rain.
+- **Brown**: −6 dB per octave. A deep, low rumble, like a waterfall or distant surf.
 
-The tone control tilts any color darker or brighter on top of that.
+The **tone** knob tilts any color deeper or brighter (±18 dB above ~350 Hz).
+Every color and tone setting is normalized to the same loudness, so you can
+explore without volume jumps. Left and right channels are generated
+independently for a wide stereo image.
 
-## Configuration
+## ⚙️ Configuration
 
-`brownnoise` remembers the color, volume and tone you had when you quit and
-starts with them next time. Command-line flags override the saved values for
-that run only.
+The color, volume and tone you quit with are saved and used next time.
+Command-line flags override them for that run.
 
-| Platform      | Path                                                                         |
-| ------------- | ---------------------------------------------------------------------------- |
-| macOS, Linux  | `$XDG_CONFIG_HOME/brownnoise/config.toml`, else `~/.config/brownnoise/config.toml` |
-| Windows       | `%APPDATA%\brownnoise\config.toml`                                           |
+| Platform     | Path                                                                                |
+| ------------ | ----------------------------------------------------------------------------------- |
+| macOS, Linux | `$XDG_CONFIG_HOME/brownnoise/config.toml`, else `~/.config/brownnoise/config.toml` |
+| Windows      | `%APPDATA%\brownnoise\config.toml`                                                  |
 
-Delete the file to go back to the defaults.
+Delete the file to return to the defaults.
 
-## License
+## 🔐 Security
+
+- Release archives come with a cosign-signed `SHA256SUMS`, GitHub/SLSA build
+  provenance and an SPDX SBOM. See [SECURITY.md](SECURITY.md#verifying-release-artifacts)
+  for the verification commands.
+- CI runs CodeQL, `cargo-deny` (RustSec advisories, licenses, sources), `zizmor`
+  for workflow security and the OpenSSF Scorecard. All actions are pinned to commit SHAs.
+- Found a vulnerability? Please report it
+  [privately](https://github.com/krax1337/brownnoise/security/advisories/new),
+  not in a public issue.
+
+## 🤝 Contributing
+
+Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
+If brownnoise helps you focus or sleep, a ⭐ helps others find it.
+
+## 📄 License
 
 [MIT](LICENSE) © 2026 Asanali Bulatov

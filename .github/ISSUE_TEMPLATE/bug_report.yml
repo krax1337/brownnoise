@@ -1,0 +1,83 @@
+name: Bug report
+description: Report something that does not work as documented.
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug.
+        Do not report security vulnerabilities here; see [SECURITY.md](https://github.com/krax1337/brownnoise/blob/main/SECURITY.md).
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: A clear description of the problem, including any error messages.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: The exact command you ran (e.g. `brownnoise --color pink --timer 30m`) and the keys you pressed.
+      placeholder: |
+        1. Run `brownnoise ...`
+        2. Press ...
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: brownnoise version
+      description: Output of `brownnoise --version`.
+      placeholder: brownnoise 0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install it?
+      options:
+        - Homebrew
+        - Prebuilt release archive
+        - cargo install
+        - Built from source
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system and version
+      placeholder: macOS 26.1 (Apple Silicon), Ubuntu 24.04 (x86_64), Windows 11
+    validations:
+      required: true
+  - type: input
+    id: audio-device
+    attributes:
+      label: Audio output device
+      description: The device sound should play on, and how it is connected. On Linux, include the sound server (PipeWire, PulseAudio, plain ALSA).
+      placeholder: AirPods Pro over Bluetooth; built-in speakers; USB DAC via PipeWire
+    validations:
+      required: true
+  - type: input
+    id: terminal
+    attributes:
+      label: Terminal
+      description: Terminal emulator and shell, or "none" when running headless (service, pipe, cron).
+      placeholder: iTerm2 3.6 with zsh; Windows Terminal with PowerShell; none
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant output
+      description: Anything brownnoise printed to the terminal or stderr. This field is rendered as code.
+      render: shell
